@@ -53,9 +53,9 @@ def build_workflow() -> StateGraph:
 
     # Add all nodes
     workflow.add_node("formalizer", formalizer_node)
-    workflow.add_node("modeler", modeler_node)
-    workflow.add_node("validator", validator_node)
-    workflow.add_node("solver", solver_node)
+    #workflow.add_node("modeler", modeler_node)
+    #workflow.add_node("validator", validator_node)
+    #workflow.add_node("solver", solver_node)
     workflow.add_node("refiner", refiner_node)
     workflow.add_node("explainer", explainer_node)
 
@@ -64,10 +64,10 @@ def build_workflow() -> StateGraph:
 
     # Define edges
     # formalizer → modeler (always)
-    workflow.add_edge("formalizer", "modeler")
+    #workflow.add_edge("formalizer", "modeler")
 
     # modeler → validator (always)
-    workflow.add_edge("modeler", "validator")
+    #workflow.add_edge("modeler", "validator")
 
     # validator → solver OR refiner (conditional)
     workflow.add_conditional_edges(
