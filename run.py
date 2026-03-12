@@ -29,11 +29,22 @@ from src.graph.workflow import build_workflow
 # Default problem or from CLI args
 DEFAULT_PROBLEM = "Place 4 queens on a 4×4 chessboard such that no two queens threaten each other. No two queens can share the same row, column, or diagonal."
 
+# Intercept arguments
+args = sys.argv[1:]
+
+is_local = False
+if "-local" in args:
+    is_local = True
+    args.remove("-local")
+elif "--local" in args:
+    is_local = True
+    args.remove("--local")
+
 # Check for agents to skip (e.g., -modeler, -validator)
 skip_agents = []
 temp_args = []
 for arg in args:
-    if arg.startswith("-") and not arg.endswith("local"):
+    if arg.startswith("-"):
         # e.g., -modeler -> modeler
         agent_name = arg.lstrip("-")
         skip_agents.append(agent_name)
