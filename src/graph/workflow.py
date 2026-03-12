@@ -46,6 +46,24 @@ def route_after_solver(state: PipelineState) -> str:
 
 # ── Build the graph ───────────────────────────────────────────────────────────
 
+SEQUENCE = ["formalizer", "modeler", "validator", "solver", "explainer"]
+
+def dynamic_router(state: PipelineState, current_node: str) -> str:
+    """Finds the next node in the sequence that is not being skipped."""
+    skip_agents = state.get("skip_agents", [])
+    
+    try:
+        current_idx = SEQUENCE.index(current_node)
+    except ValueError:
+        return END
+
+    # Look ahead for the next unskipped node
+    for i in range(current_idx + 1, len(SEQUENCE)):
+        next_node = SEQUENCE[i]
+        if next_node not in skip_agents:
+            return next_node
+
+    return END
 
 def build_workflow() -> StateGraph:
     """Build and compile the LangGraph workflow."""
@@ -53,47 +71,78 @@ def build_workflow() -> StateGraph:
 
     # Add all nodes
     workflow.add_node("formalizer", formalizer_node)
-    #workflow.add_node("modeler", modeler_node)
-    #workflow.add_node("validator", validator_node)
-    #workflow.add_node("solver", solver_node)
+    workflow.add_node("modeler", modeler_node)
+    workflow.add_node("validator", validator_node)
+    workflow.add_node("solver", solver_node)
     workflow.add_node("refiner", refiner_node)
     workflow.add_node("explainer", explainer_node)
 
-    # Set entry point
-    workflow.set_entry_point("formalizer")
-
-    # Define edges
-    # formalizer → modeler (always)
-    #workflow.add_edge("formalizer", "modeler")
-
-    # modeler → validator (always)
-    #workflow.add_edge("modeler", "validator")
-
-    # validator → solver OR refiner (conditional)
+    # Calculate Entry Point
+    # The entry point should be the first agent in the sequence that isn't skipped
+    # (Since we can't reliably read the state at init time for the entry point, 
+    # we usually just route to an internal start node, but LangGraph allows 
+    # conditional entry points in recent versions!)
+    
+    # For now, we'll route from a dummy __start__ if possible, or just require 
+    # that 'formalizer' is never the ONE node skipped if it's the hardcoded entry.
+    # Actually wait - we can just define a conditional entry point:
     workflow.add_conditional_edges(
-        "validator",
-        route_after_validation,
-        {
-            "solver": "solver",
-            "refiner": "refiner",
-        }
+        "__start__",
+        lambda state: dynamic_router(state, "") if dynamic_router(state, "") != END else "formalizer" # fallback
     )
 
-    # solver → explainer OR refiner (conditional)
-    workflow.add_conditional_edges(
-        "solver",
-        route_after_solver,
-        {
-            "explainer": "explainer",
-            "refiner": "refiner",
-        }
-    )
+    # Define edges using our dynamic router
 
-    # refiner → modeler (loop back, but skip the formalizer — spec is fine)
-    workflow.add_edge("refiner", "modeler")
+    # formalizer → next
+    workflow.add_conditional_edges("formalizer", lambda state: dynamic_router(state, "formalizer"))
+
+    # modeler → next
+    workflow.add_conditional_edges("modeler", lambda state: dynamic_router(state, "modeler"))
+
+    # validator → solver OR refiner (conditional loop) OR next
+    def handle_validator(state: PipelineState) -> str:
+        validation = state.get("validation", {})
+        if validation.get("is_valid", False):
+            return dynamic_router(state, "validator")
+        else:
+            iteration = state.get("iteration", 0)
+            if iteration >= MAX_REFINEMENT_ITERATIONS:
+                return dynamic_router(state, "validator")
+            # Loop
+            if "refiner" in state.get("skip_agents", []):
+                return dynamic_router(state, "validator")
+            return "refiner"
+            
+    workflow.add_conditional_edges("validator", handle_validator)
+
+    # solver → explainer OR refiner (conditional loop) OR next
+    def handle_solver(state: PipelineState) -> str:
+        solver_result = state.get("solver_result", {})
+        status = solver_result.get("status", "")
+
+        if status == SolverStatus.SUCCESS.value:
+            return dynamic_router(state, "solver")
+        else:
+            iteration = state.get("iteration", 0)
+            if iteration >= MAX_REFINEMENT_ITERATIONS:
+                return dynamic_router(state, "solver")
+            if "refiner" in state.get("skip_agents", []):
+                return dynamic_router(state, "solver")
+            return "refiner"
+            
+    workflow.add_conditional_edges("solver", handle_solver)
+
+    # refiner → modeler (loop back)
+    # If modeler is skipped, go to validator, etc.
+    def handle_refiner(state: PipelineState) -> str:
+        # It loops back before the modeling step
+        # To find the next agent we pretend we are back before the modeler
+        return dynamic_router(state, "formalizer")
+        
+    workflow.add_conditional_edges("refiner", handle_refiner)
 
     # explainer → END
-    workflow.add_edge("explainer", END)
+    workflow.add_conditional_edges("explainer", lambda state: dynamic_router(state, "explainer"))
 
     return workflow.compile()
 
@@ -109,6 +158,7 @@ def run_pipeline(problem_description: str) -> dict:
         "current_step": "starting",
         "status": "Pipeline started",
         "messages": [],
+        "skip_agents": [],
     }
 
     # Run with streaming for progress updates
@@ -127,6 +177,7 @@ def stream_pipeline(problem_description: str):
         "current_step": "starting",
         "status": "Pipeline started",
         "messages": [],
+        "skip_agents": [],
     }
 
     # Yield intermediate states

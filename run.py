@@ -29,20 +29,26 @@ from src.graph.workflow import build_workflow
 # Default problem or from CLI args
 DEFAULT_PROBLEM = "Place 4 queens on a 4×4 chessboard such that no two queens threaten each other. No two queens can share the same row, column, or diagonal."
 
-# Check for local flag
-args = sys.argv[1:]
-is_local = False
-
-if "-local" in args:
-    is_local = True
-    args.remove("-local")
-elif "--local" in args:
-    is_local = True
-    args.remove("--local")
+# Check for agents to skip (e.g., -modeler, -validator)
+skip_agents = []
+temp_args = []
+for arg in args:
+    if arg.startswith("-") and not arg.endswith("local"):
+        # e.g., -modeler -> modeler
+        agent_name = arg.lstrip("-")
+        skip_agents.append(agent_name)
+    else:
+        temp_args.append(arg)
+args = temp_args
 
 if is_local:
     os.environ["LLM_PROVIDER"] = "ollama"
-    print("🚀 Local Mode Activated: Using Ollama (LangSmith tracing remains enabled if configured).\n")
+    print("🚀 Local Mode Activated: Using Ollama (LangSmith tracing remains enabled if configured).")
+
+if skip_agents:
+    print(f"⏭️  Skipping Agents: {', '.join(skip_agents)}")
+    
+print("\n")
 
 problem = " ".join(args) if args else DEFAULT_PROBLEM
 
@@ -59,6 +65,7 @@ initial_state = {
     "current_step": "starting",
     "status": "Pipeline started",
     "messages": [],
+    "skip_agents": skip_agents,
 }
 
 # Stream with updates to see each agent step
@@ -67,48 +74,62 @@ if is_local:
 else:
     print("\n🚀 Running pipeline (all traces → LangSmith)...\n")
 
-for event in graph.stream(initial_state, stream_mode="updates"):
-    for node_name, node_output in event.items():
-        step = node_output.get("current_step", node_name)
-        status = node_output.get("status", "")
-        print(f"  ✅ [{node_name}] → {status}")
-
-        # Show key info for each step
-        if node_name == "formalizer":
-            spec = node_output.get("csp_spec", {})
-            print(f"     Variables: {len(spec.get('variables', []))}")
-            print(f"     Constraints: {len(spec.get('constraints', []))}")
-
-        elif node_name == "modeler":
-            model = node_output.get("choco_model", {})
-            code = model.get("java_code", "")
-            print(f"     Generated: {model.get('class_name', '?')}.java ({len(code)} chars)")
-
-        elif node_name == "validator":
-            val = node_output.get("validation", {})
-            print(f"     Valid: {val.get('is_valid', '?')}")
-            for issue in val.get("issues", []):
-                print(f"     ⚠️  {issue}")
-
-        elif node_name == "solver":
-            result = node_output.get("solver_result", {})
-            print(f"     Status: {result.get('status', '?')}")
-            if result.get("solution"):
-                print(f"     Solution: {result['solution']}")
-            if result.get("error_message"):
-                print(f"     Error: {result['error_message'][:200]}")
-            stats = result.get("statistics", {})
-            if stats:
-                print(f"     Stats: {json.dumps(stats, indent=2)}")
-
-        elif node_name == "refiner":
-            print(f"     Iteration: {node_output.get('iteration', '?')}")
-
-        elif node_name == "explainer":
-            explanation = node_output.get("explanation", "")
-            print(f"     Explanation: {explanation[:300]}...")
-
-        print()
+for event in graph.stream(initial_state, stream_mode=["updates", "messages"]):
+    # event is a tuple of (stream_mode, data) when multiple stream_modes are used
+    mode, chunk = event
+    
+    if mode == "messages":
+        # Stream the LLM tokens directly to the console!
+        message, metadata = chunk
+        # Only print AIMessage chunks (not Human input or Tool outputs)
+        if message.__class__.__name__ == "AIMessageChunk":
+            # Print the text token-by-token without newlines
+            print(message.content, end="", flush=True)
+            
+    elif mode == "updates":
+        # Print a newline if we just finished streaming tokens
+        print() 
+        for node_name, node_output in chunk.items():
+            step = node_output.get("current_step", node_name)
+            status = node_output.get("status", "")
+            print(f"\n  ✅ [{node_name}] → {status}")
+    
+            # Show key info for each step
+            if node_name == "formalizer":
+                spec = node_output.get("csp_spec", {})
+                print(f"     Variables: {len(spec.get('variables', []))}")
+                print(f"     Constraints: {len(spec.get('constraints', []))}")
+    
+            elif node_name == "modeler":
+                model = node_output.get("choco_model", {})
+                code = model.get("java_code", "")
+                print(f"     Generated: {model.get('class_name', '?')}.java ({len(code)} chars)")
+    
+            elif node_name == "validator":
+                val = node_output.get("validation", {})
+                print(f"     Valid: {val.get('is_valid', '?')}")
+                for issue in val.get("issues", []):
+                    print(f"     ⚠️  {issue}")
+    
+            elif node_name == "solver":
+                result = node_output.get("solver_result", {})
+                print(f"     Status: {result.get('status', '?')}")
+                if result.get("solution"):
+                    print(f"     Solution: {result['solution']}")
+                if result.get("error_message"):
+                    print(f"     Error: {result['error_message'][:200]}")
+                stats = result.get("statistics", {})
+                if stats:
+                    print(f"     Stats: {json.dumps(stats, indent=2)}")
+    
+            elif node_name == "refiner":
+                print(f"     Iteration: {node_output.get('iteration', '?')}")
+    
+            elif node_name == "explainer":
+                explanation = node_output.get("explanation", "")
+                print(f"     Explanation: {explanation[:300]}...")
+    
+            print("-" * 60)
 
 print("-" * 60)
 print("✅ Pipeline complete! Check LangSmith for full traces:")

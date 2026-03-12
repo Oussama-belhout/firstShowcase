@@ -110,6 +110,9 @@ class PipelineState(TypedDict, total=False):
     # Explainer output
     explanation: str
     
+    # Dynamic runtime config
+    skip_agents: list[str]
+    
     # Refiner state
     error_history: list[str]
     iteration: int
