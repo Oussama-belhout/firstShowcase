@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+choco_runner/target/
+choco_runner/generated_models/
+*.class
+.streamlit/
