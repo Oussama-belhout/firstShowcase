@@ -32,6 +32,14 @@ def refiner_node(state: PipelineState) -> dict:
     llm = get_llm(temperature=0.2)  # Slightly higher temp for creative fixes
 
     spec = CSPSpecification(**state["csp_spec"])
+    
+    if "choco_model" not in state:
+        return {
+            "current_step": "refined",
+            "status": "Skipped refinement (no model generated)",
+            "iteration": state.get("iteration", 0)
+        }
+        
     model = ChocoModel(**state["choco_model"])
     iteration = state.get("iteration", 0) + 1
 

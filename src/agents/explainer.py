@@ -20,6 +20,14 @@ def explainer_node(state: PipelineState) -> dict:
     llm = get_llm(temperature=0.3)  # Slightly creative for pedagogical explanations
 
     spec = CSPSpecification(**state["csp_spec"])
+    
+    if "solver_result" not in state:
+        return {
+            "explanation": "No solver result provided. The solver was likely skipped.",
+            "current_step": "explained",
+            "status": "Skipped explanation",
+        }
+        
     solver_result = SolverResult(**state["solver_result"])
 
     messages = [

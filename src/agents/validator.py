@@ -21,6 +21,14 @@ def validator_node(state: PipelineState) -> dict:
     structured_llm = llm.with_structured_output(ValidationResult)
 
     spec = CSPSpecification(**state["csp_spec"])
+    
+    if "choco_model" not in state:
+        return {
+            "validation": {"is_valid": False, "issues": ["Model was skipped; nothing to validate."], "suggestions": []},
+            "current_step": "validated",
+            "status": "validation_skipped_no_model",
+        }
+        
     model = ChocoModel(**state["choco_model"])
 
     messages = [

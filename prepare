@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+SAMPLE_PROBLEM="${SAMPLE_PROBLEM:-Place 8 queens on an 8x8 chessboard such that no two queens threaten each other. No two queens can share the same row, column, or diagonal.}"
+OLLAMA_MODEL="${OLLAMA_MODEL:-${MODEL_NAME:-llama3.1}}"
+RUN_PIPELINE=1
+LOCAL_MODE=0
+
+print_usage() {
+  cat <<'EOF'
+Usage: ./prepare [options]
+
+Options:
+  --install-only       Install dependencies only; skip pipeline smoke run
+  --local              Run pipeline in Ollama local mode (passes --local to run.py)
+  --problem "TEXT"     Override the sample CSP problem for smoke run
+  -h, --help           Show this help
+
+Environment variables:
+  VENV_DIR             Virtual environment path (default: ./.venv)
+  PYTHON_BIN           Python executable to use (default: python3)
+  SAMPLE_PROBLEM       Default sample problem text
+
+Notes:
+  - This script targets Ubuntu/Debian (uses apt-get).
+  - Choco Solver is fetched automatically as a Maven dependency.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --install-only)
+      RUN_PIPELINE=0
+      shift
+      ;;
+    --local)
+      LOCAL_MODE=1
+      shift
+      ;;
+    --problem)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "Error: --problem requires a value." >&2
+        exit 1
+      fi
+      SAMPLE_PROBLEM="$1"
+      shift
+      ;;
+    -h|--help)
+      print_usage
+      exit 0
+      ;;
+    *)
+      echo "Error: Unknown argument '$1'." >&2
+      print_usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ ! -f "$ROOT_DIR/run.py" ]]; then
+  echo "Error: run.py not found. Execute this script from the project root." >&2
+  exit 1
+fi
+
+if ! command -v apt-get >/dev/null 2>&1; then
+  echo "Error: apt-get not found. This script currently supports Ubuntu/Debian only." >&2
+  exit 1
+fi
+
+SUDO=""
+if [[ "${EUID}" -ne 0 ]]; then
+  if command -v sudo >/dev/null 2>&1; then
+    SUDO="sudo"
+  else
+    echo "Error: This script needs root privileges to install packages. Install sudo or run as root." >&2
+    exit 1
+  fi
+fi
+
+echo "[1/6] Installing system dependencies (Java 17, Maven, Python venv)"
+$SUDO apt-get update
+$SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  openjdk-17-jdk \
+  maven \
+  python3 \
+  python3-venv \
+  python3-pip \
+  curl
+
+echo "[2/6] Verifying Java and Maven"
+java -version
+mvn -version
+
+echo "[3/6] Creating/updating Python virtual environment"
+if [[ ! -d "$VENV_DIR" ]]; then
+  "$PYTHON_BIN" -m venv "$VENV_DIR"
+fi
+
+# shellcheck disable=SC1091
+source "$VENV_DIR/bin/activate"
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r "$ROOT_DIR/requirements.txt"
+
+echo "[4/6] Ensuring Choco artifacts are downloaded"
+mvn -q -f "$ROOT_DIR/choco_runner/pom.xml" -DskipTests compile
+
+echo "[5/6] Environment sanity check"
+if [[ ! -f "$ROOT_DIR/.env" ]]; then
+  cat <<'EOF'
+Warning: .env file not found.
+Create one before non-local runs with at least:
+  LLM_PROVIDER=gemini|openai|groq|ollama
+  MODEL_NAME=<model>
+  API key for provider (for example GOOGLE_API_KEY or OPENAI_API_KEY)
+EOF
+fi
+
+if [[ "$LOCAL_MODE" -eq 1 ]]; then
+  echo "[local] Ensuring Ollama is installed and reachable"
+  if ! command -v ollama >/dev/null 2>&1; then
+    curl -fsSL https://ollama.com/install.sh | sh
+  fi
+
+  if ! curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+    nohup ollama serve >/tmp/ollama.log 2>&1 &
+    sleep 2
+  fi
+
+  if ! curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+    echo "Error: Ollama could not be started. Check /tmp/ollama.log" >&2
+    exit 1
+  fi
+
+  echo "[local] Pulling Ollama model: $OLLAMA_MODEL"
+  ollama pull "$OLLAMA_MODEL"
+fi
+
+if [[ "$RUN_PIPELINE" -eq 1 ]]; then
+  echo "[6/6] Running pipeline smoke test"
+  if [[ "$LOCAL_MODE" -eq 1 ]]; then
+    python "$ROOT_DIR/run.py" --local "$SAMPLE_PROBLEM"
+  else
+    python "$ROOT_DIR/run.py" "$SAMPLE_PROBLEM"
+  fi
+else
+  echo "[6/6] Skipping pipeline smoke test (--install-only)"
+fi
+
+echo "Prepare completed successfully."

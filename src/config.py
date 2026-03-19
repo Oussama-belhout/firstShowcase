@@ -14,9 +14,14 @@ def get_llm(temperature: float | None = None, model: str | None = None):
 
     if provider == "ollama":
         from langchain_ollama import ChatOllama
+        
+        # Check if the user defined a remote host, otherwise fallback
+        base_url = os.getenv("OLLAMA_HOST")
+        
         return ChatOllama(
             model=model or os.getenv("MODEL_NAME", "llama3.1"),
             temperature=temp,
+            base_url=base_url if base_url else None
         )
     elif provider == "groq":
         from langchain_groq import ChatGroq

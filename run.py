@@ -13,15 +13,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotenv import load_dotenv
 load_dotenv()
 
-# Verify LangSmith is configured
 print("=" * 60)
-print("🔧 CSP Solver — Multi-Agent Pipeline")
+print("CSP Solver - Multi-Agent Pipeline")
 print("=" * 60)
 print(f"  LangSmith tracing: {os.getenv('LANGCHAIN_TRACING_V2', 'NOT SET')}")
 print(f"  LangSmith project: {os.getenv('LANGCHAIN_PROJECT', 'NOT SET')}")
 print(f"  Model: {os.getenv('MODEL_NAME', 'gpt-4o')}")
-print(f"  API Key set: {'✅' if os.getenv('GOOGLE_API_KEY') or os.getenv('OPENAI_API_KEY') else '❌'}")
-print(f"  LangSmith Key set: {'✅' if os.getenv('LANGCHAIN_API_KEY') else '❌'}")
+print(f"  API Key set: {'Yes' if os.getenv('GOOGLE_API_KEY') or os.getenv('OPENAI_API_KEY') else 'No'}")
+print(f"  LangSmith Key set: {'Yes' if os.getenv('LANGCHAIN_API_KEY') else 'No'}")
 print("=" * 60)
 
 from src.graph.workflow import build_workflow
@@ -54,16 +53,16 @@ args = temp_args
 
 if is_local:
     os.environ["LLM_PROVIDER"] = "ollama"
-    print("🚀 Local Mode Activated: Using Ollama (LangSmith tracing remains enabled if configured).")
+    print("Local Mode Activated: Using Ollama (LangSmith tracing remains enabled if configured).")
 
 if skip_agents:
-    print(f"⏭️  Skipping Agents: {', '.join(skip_agents)}")
+    print(f"Skipping Agents: {', '.join(skip_agents)}")
     
 print("\n")
 
 problem = " ".join(args) if args else DEFAULT_PROBLEM
 
-print(f"\n📝 Problem: {problem}\n")
+print(f"\nProblem: {problem}\n")
 print("-" * 60)
 
 # Build and run the graph
@@ -81,9 +80,9 @@ initial_state = {
 
 # Stream with updates to see each agent step
 if is_local:
-    print("\n🚀 Running pipeline (Locally with Ollama, tracing → LangSmith)...\n")
+    print("\nRunning pipeline (Locally with Ollama, tracing -> LangSmith)...\n")
 else:
-    print("\n🚀 Running pipeline (all traces → LangSmith)...\n")
+    print("\nRunning pipeline (all traces -> LangSmith)...\n")
 
 for event in graph.stream(initial_state, stream_mode=["updates", "messages"]):
     # event is a tuple of (stream_mode, data) when multiple stream_modes are used
@@ -103,7 +102,7 @@ for event in graph.stream(initial_state, stream_mode=["updates", "messages"]):
         for node_name, node_output in chunk.items():
             step = node_output.get("current_step", node_name)
             status = node_output.get("status", "")
-            print(f"\n  ✅ [{node_name}] → {status}")
+            print(f"\n  [{node_name}] -> {status}")
     
             # Show key info for each step
             if node_name == "formalizer":
@@ -120,7 +119,7 @@ for event in graph.stream(initial_state, stream_mode=["updates", "messages"]):
                 val = node_output.get("validation", {})
                 print(f"     Valid: {val.get('is_valid', '?')}")
                 for issue in val.get("issues", []):
-                    print(f"     ⚠️  {issue}")
+                    print(f"     !  {issue}")
     
             elif node_name == "solver":
                 result = node_output.get("solver_result", {})
@@ -143,6 +142,6 @@ for event in graph.stream(initial_state, stream_mode=["updates", "messages"]):
             print("-" * 60)
 
 print("-" * 60)
-print("✅ Pipeline complete! Check LangSmith for full traces:")
+print("Pipeline complete! Check LangSmith for full traces:")
 print("   https://smith.langchain.com")
 print("-" * 60)

@@ -7,6 +7,19 @@ from src.choco.parser import parse_solver_output
 
 def solver_node(state: PipelineState) -> dict:
     """LangGraph node: Compile and run the Choco model, collect results."""
+    if "choco_model" not in state:
+        solver_result = SolverResult(
+            status=SolverStatus.RUNTIME_ERROR,
+            error_message="Cannot run solver: Model was skipped or not generated.",
+            stdout="",
+            stderr=""
+        )
+        return {
+            "solver_result": solver_result.model_dump(),
+            "current_step": "solved",
+            "status": solver_result.status.value,
+        }
+    
     model = ChocoModel(**state["choco_model"])
 
     # Run via the Choco bridge
