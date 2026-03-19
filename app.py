@@ -20,8 +20,8 @@ from src.graph.workflow import build_workflow
 # ── Page Config ───────────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="CSP Solver — Multi-Agent System",
-    page_icon="🧩",
+    page_title="CSP Solver - Multi-Agent System",
+    page_icon="cube",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -204,12 +204,12 @@ Where _ means the cell needs to be filled.""",
 # ── Pipeline Step Definitions ─────────────────────────────────────────────────
 
 PIPELINE_STEPS = [
-    ("formalizer", "🔍 Formalizer", "Analyzing problem"),
-    ("modeler", "⚙️ Modeler", "Generating Choco code"),
-    ("validator", "✅ Validator", "Validating model"),
-    ("solver", "🚀 Solver", "Running Choco solver"),
-    ("refiner", "🔧 Refiner", "Refining model"),
-    ("explainer", "📖 Explainer", "Explaining solution"),
+    ("formalizer", "Formalizer", "Analyzing problem"),
+    ("modeler", "Modeler", "Generating Choco code"),
+    ("validator", "Validator", "Validating model"),
+    ("solver", "Solver", "Running Choco solver"),
+    ("refiner", "Refiner", "Refining model"),
+    ("explainer", "Explainer", "Explaining solution"),
 ]
 
 # ── Helper Functions ──────────────────────────────────────────────────────────
@@ -218,12 +218,12 @@ PIPELINE_STEPS = [
 def get_step_status(step_key: str, completed_steps: list, current_step: str, error_step: str = None):
     """Get visual status for a pipeline step."""
     if error_step == step_key:
-        return "error", "🔴"
+        return "error", "ERROR"
     if step_key in completed_steps:
-        return "done", "🟢"
+        return "done", "DONE"
     if step_key == current_step:
-        return "active", "🟡"
-    return "pending", "⚪"
+        return "active", "ACTIVE"
+    return "pending", "PENDING"
 
 
 def render_pipeline_flow(completed_steps: list, current_step: str):
@@ -233,41 +233,42 @@ def render_pipeline_flow(completed_steps: list, current_step: str):
         status, icon = get_step_status(key, completed_steps, current_step)
         with cols[i]:
             if status == "done":
-                st.success(f"{label}", icon="✅")
+                st.success(f"{label}", icon="check")
             elif status == "active":
-                st.warning(f"{label}", icon="⏳")
+                st.warning(f"{label}", icon="sync")
             elif status == "error":
-                st.error(f"{label}", icon="❌")
+                st.error(f"{label}", icon="stop")
             else:
-                st.info(f"{label}", icon="⬜")
+                st.info(f"{label}", icon="circle")
 
 
 # ── Main App ──────────────────────────────────────────────────────────────────
 
+# Main content
 # Header
 st.markdown("""
 <div class="main-header">
-    <h1>🧩 CSP Solver — Multi-Agent System</h1>
+    <h1>CSP Solver - Multi-Agent System</h1>
     <p>Automatic resolution of combinatorial problems using LLMs & Choco constraint programming</p>
 </div>
 """, unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
-    st.markdown("### 🎯 Quick Start")
+    st.markdown("### Quick Start")
     st.markdown("Select a preset problem or enter your own:")
 
     st.markdown("---")
-    st.markdown("### 📋 Preset Problems")
+    st.markdown("### Preset Problems")
 
     selected_preset = None
     for name, desc in PRESETS.items():
-        if st.button(f"🔹 {name}", key=f"preset_{name}", use_container_width=True):
+        if st.button(f"> {name}", key=f"preset_{name}", use_container_width=True):
             selected_preset = desc
             st.session_state["problem_input"] = desc
 
     st.markdown("---")
-    st.markdown("### ⚙️ Configuration")
+    st.markdown("### Configuration")
     model_name = os.getenv("MODEL_NAME", "gpt-4o")
     st.markdown(f"**Model:** `{model_name}`")
     st.markdown(f"**Max Retries:** `{os.getenv('MAX_REFINEMENT_ITERATIONS', '3')}`")
@@ -276,9 +277,9 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("""
     <div class="langsmith-link">
-        <strong>📊 LangSmith Dashboard</strong><br>
+        <strong>LangSmith Dashboard</strong><br>
         <a href="https://smith.langchain.com" target="_blank" style="color: #667eea;">
-            View traces & monitoring →
+            View traces & monitoring ->
         </a>
     </div>
     """, unsafe_allow_html=True)
@@ -295,10 +296,10 @@ col_input, col_status = st.columns([2, 1])
 
 with col_input:
     problem = st.text_area(
-        "📝 Describe your combinatorial problem",
+        "Describe your combinatorial problem",
         value=st.session_state.get("problem_input", ""),
         height=150,
-        placeholder="e.g., Place 4 queens on a 4×4 chessboard such that no two queens threaten each other...",
+        placeholder="e.g., Place 4 queens on a 4x4 chessboard such that no two queens threaten each other...",
     )
 
 with col_status:
@@ -315,7 +316,7 @@ with col_status:
         st.markdown(f'<span class="status-badge status-pending">Ready</span>', unsafe_allow_html=True)
 
 # Run button
-if st.button("🚀 Solve Problem", use_container_width=True, disabled=not problem):
+if st.button("Solve Problem", use_container_width=True, disabled=not problem):
     if not problem.strip():
         st.error("Please enter a problem description.")
     else:
@@ -337,7 +338,7 @@ if st.button("🚀 Solve Problem", use_container_width=True, disabled=not proble
 
         # Progress section
         st.markdown("---")
-        st.markdown("## 🔄 Pipeline Execution")
+        st.markdown("## Pipeline Execution")
 
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -384,7 +385,7 @@ if st.button("🚀 Solve Problem", use_container_width=True, disabled=not proble
                     st.session_state["pipeline_result"].update(node_output)
 
             progress_bar.progress(1.0)
-            status_text.markdown("**✅ Pipeline complete!**")
+            status_text.markdown("**Pipeline complete!**")
             st.session_state["pipeline_running"] = False
 
         except Exception as e:
@@ -399,7 +400,7 @@ if st.button("🚀 Solve Problem", use_container_width=True, disabled=not proble
 
         if final_result:
             st.markdown("---")
-            st.markdown("## 📊 Results")
+            st.markdown("## Results")
 
             # Metrics row
             solver_result = final_result.get("solver_result", {})
@@ -407,8 +408,8 @@ if st.button("🚀 Solve Problem", use_container_width=True, disabled=not proble
 
             m1, m2, m3, m4 = st.columns(4)
             with m1:
-                status_emoji = "✅" if solver_result.get("status") == "success" else "❌"
-                st.metric("Status", f"{status_emoji} {solver_result.get('status', 'N/A').upper()}")
+                status_emoji = "SUCCESS" if solver_result.get("status") == "success" else "FAILED"
+                st.metric("Status", f"{status_emoji}")
             with m2:
                 st.metric("Iterations", final_result.get("iteration", 0))
             with m3:
@@ -418,8 +419,8 @@ if st.button("🚀 Solve Problem", use_container_width=True, disabled=not proble
 
             # Detailed results in tabs
             tab_spec, tab_code, tab_solution, tab_explain, tab_traces, tab_raw = st.tabs([
-                "📋 CSP Spec", "💻 Generated Code", "🎯 Solution",
-                "📖 Explanation", "📊 Monitor Traces", "🔧 Raw Data"
+                "CSP Spec", "Generated Code", "Solution",
+                "Explanation", "Monitor Traces", "Raw Data"
             ])
 
             with tab_spec:
@@ -448,7 +449,7 @@ if st.button("🚀 Solve Problem", use_container_width=True, disabled=not proble
 
             with tab_solution:
                 if solver_result.get("status") == "success":
-                    st.success("✅ Solution found!")
+                    st.success("Solution found!")
                     solution = solver_result.get("solution", {})
                     if solution:
                         # Nice display
@@ -459,9 +460,9 @@ if st.button("🚀 Solve Problem", use_container_width=True, disabled=not proble
                     st.markdown("**Raw solution:**")
                     st.code(solver_result.get("solution_text", ""), language="text")
                 elif solver_result.get("status") == "no_solution":
-                    st.warning("⚠️ No solution found.")
+                    st.warning("No solution found.")
                 else:
-                    st.error(f"❌ Solver failed: {solver_result.get('error_message', 'Unknown error')}")
+                    st.error(f"Solver failed: {solver_result.get('error_message', 'Unknown error')}")
 
                 if solver_result.get("stderr"):
                     with st.expander("Stderr Output"):
@@ -507,18 +508,18 @@ if st.button("🚀 Solve Problem", use_container_width=True, disabled=not proble
 if "pipeline_result" not in st.session_state:
     st.markdown("---")
 
-    st.markdown("### 🏗️ Architecture")
+    st.markdown("### Architecture")
     st.markdown("""
     This system uses a **LangGraph multi-agent pipeline** with 6 specialized agents:
 
     | Agent | Role |
     |-------|------|
-    | 🔍 **Formalizer** | Parses natural language → structured CSP specification |
-    | ⚙️ **Modeler** | Generates Choco Solver Java code from the specification |
-    | ✅ **Validator** | Validates the generated model against the specification |
-    | 🚀 **Solver** | Compiles & executes the Choco model |
-    | 🔧 **Refiner** | Fixes errors through iterative improvement (up to 3 retries) |
-    | 📖 **Explainer** | Produces pedagogical explanations of the solving process |
+    | **Formalizer** | Parses natural language -> structured CSP specification |
+    | **Modeler**    | Generates Choco Solver Java code from the specification |
+    | **Validator**  | Validates the generated model against the specification |
+    | **Solver**     | Compiles & executes the Choco model |
+    | **Refiner**    | Fixes errors through iterative improvement (up to 3 retries) |
+    | **Explainer**  | Produces pedagogical explanations of the solving process |
 
     All agent calls are traced via **LangSmith** for full observability.
     """)
