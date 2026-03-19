@@ -7,6 +7,8 @@ import sys
 import os
 import json
 import time
+from contextlib import nullcontext
+from datetime import datetime
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -14,11 +16,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotenv import load_dotenv
 load_dotenv()
 
+from langchain_core.runnables import RunnableLambda
+
 try:
     from langchain_core.tracers.langchain import wait_for_all_tracers
 except Exception:
     def wait_for_all_tracers() -> None:
         return None
+
+try:
+    from langchain_core.tracers.context import tracing_v2_enabled
+except Exception:
+    tracing_v2_enabled = None
 
 
 def _is_true(value: str | None) -> bool:
@@ -64,6 +73,24 @@ def _configure_tracing_env() -> None:
         os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
 
 
+def _run_trace_probe(project_name: str, has_langsmith_key: bool) -> None:
+    """Send a tiny traced run to LangSmith to validate ingestion path."""
+    probe = RunnableLambda(
+        lambda x: {"ok": True, "timestamp": datetime.utcnow().isoformat(), "input": x}
+    )
+
+    if tracing_v2_enabled is not None and has_langsmith_key:
+        with tracing_v2_enabled(project_name=project_name):
+            output = probe.invoke({"probe": "langsmith"})
+            print(f"Trace probe output: {output}")
+    else:
+        output = probe.invoke({"probe": "langsmith"})
+        print(f"Trace probe output: {output}")
+
+    _flush_traces()
+    print("Trace probe completed. Check LangSmith for a recent 'RunnableLambda' run.")
+
+
 _configure_tracing_env()
 
 # Make trace delivery synchronous for CLI robustness so Ctrl+C keeps partial traces.
@@ -92,6 +119,11 @@ DEFAULT_PROBLEM = "Place 4 queens on a 4×4 chessboard such that no two queens t
 
 # Intercept arguments
 args = sys.argv[1:]
+trace_probe = False
+
+if "--trace-probe" in args:
+    trace_probe = True
+    args.remove("--trace-probe")
 
 is_local = False
 if "-local" in args:
@@ -119,6 +151,13 @@ if is_local:
 
 if skip_agents:
     print(f"Skipping Agents: {', '.join(skip_agents)}")
+
+if trace_probe:
+    project_name = os.getenv("LANGSMITH_PROJECT") or os.getenv("LANGCHAIN_PROJECT") or "default"
+    has_langsmith_key = bool(os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY"))
+    print("Running trace probe only...")
+    _run_trace_probe(project_name=project_name, has_langsmith_key=has_langsmith_key)
+    sys.exit(0)
     
 print("\n")
 
@@ -146,7 +185,9 @@ if is_local:
 else:
     print("\nRunning pipeline (all traces -> LangSmith)...\n")
 
-try:
+
+def _stream_events() -> None:
+    """Run and print pipeline stream events."""
     for event in graph.stream(initial_state, stream_mode=["updates", "messages"]):
         # event is a tuple of (stream_mode, data) when multiple stream_modes are used
         mode, chunk = event
@@ -201,6 +242,17 @@ try:
                     print(f"     Explanation: {explanation[:300]}...")
 
                 print("-" * 60)
+
+try:
+    has_langsmith_key = bool(os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY"))
+    project_name = os.getenv("LANGSMITH_PROJECT") or os.getenv("LANGCHAIN_PROJECT") or "default"
+
+    if tracing_v2_enabled is not None and has_langsmith_key:
+        with tracing_v2_enabled(project_name=project_name):
+            _stream_events()
+    else:
+        with nullcontext():
+            _stream_events()
 except KeyboardInterrupt:
     print("\n\nInterrupted by user (Ctrl+C). Flushing traces to LangSmith...")
     _flush_traces()
